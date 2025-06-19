@@ -1,1 +1,149 @@
-{"nbformat":4,"nbformat_minor":0,"metadata":{"colab":{"provenance":[],"authorship_tag":"ABX9TyOZ04mqERJdXco5ZkN44TxS"},"kernelspec":{"name":"python3","display_name":"Python 3"},"language_info":{"name":"python"}},"cells":[{"cell_type":"code","execution_count":5,"metadata":{"colab":{"base_uri":"https://localhost:8080/"},"id":"iprez7S4EhwS","outputId":"ac715323-7d02-4c7b-dfdd-253b833f9c4f","executionInfo":{"status":"ok","timestamp":1750293743248,"user_tz":-420,"elapsed":45323,"user":{"displayName":"tai nguyen","userId":"14115413621566996446"}}},"outputs":[{"output_type":"stream","name":"stdout","text":["Requirement already satisfied: flask in /usr/local/lib/python3.11/dist-packages (3.1.1)\n","Requirement already satisfied: pyngrok in /usr/local/lib/python3.11/dist-packages (7.2.11)\n","Requirement already satisfied: cryptography in /usr/local/lib/python3.11/dist-packages (43.0.3)\n","Requirement already satisfied: blinker>=1.9.0 in /usr/local/lib/python3.11/dist-packages (from flask) (1.9.0)\n","Requirement already satisfied: click>=8.1.3 in /usr/local/lib/python3.11/dist-packages (from flask) (8.2.1)\n","Requirement already satisfied: itsdangerous>=2.2.0 in /usr/local/lib/python3.11/dist-packages (from flask) (2.2.0)\n","Requirement already satisfied: jinja2>=3.1.2 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.6)\n","Requirement already satisfied: markupsafe>=2.1.1 in /usr/local/lib/python3.11/dist-packages (from flask) (3.0.2)\n","Requirement already satisfied: werkzeug>=3.1.0 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.3)\n","Requirement already satisfied: PyYAML>=5.1 in /usr/local/lib/python3.11/dist-packages (from pyngrok) (6.0.2)\n","Requirement already satisfied: cffi>=1.12 in /usr/local/lib/python3.11/dist-packages (from cryptography) (1.17.1)\n","Requirement already satisfied: pycparser in /usr/local/lib/python3.11/dist-packages (from cffi>=1.12->cryptography) (2.22)\n"," * Trang web của bạn đang chạy tại: NgrokTunnel: \"https://fb35-34-16-216-98.ngrok-free.app\" -> \"http://localhost:5000\"\n"," * Serving Flask app '__main__'\n"," * Debug mode: off\n"]},{"output_type":"stream","name":"stderr","text":["INFO:werkzeug:\u001b[31m\u001b[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.\u001b[0m\n"," * Running on http://127.0.0.1:5000\n","INFO:werkzeug:\u001b[33mPress CTRL+C to quit\u001b[0m\n","INFO:werkzeug:127.0.0.1 - - [19/Jun/2025 00:41:49] \"GET / HTTP/1.1\" 200 -\n","INFO:werkzeug:127.0.0.1 - - [19/Jun/2025 00:41:49] \"\u001b[33mGET /favicon.ico HTTP/1.1\u001b[0m\" 404 -\n"]}],"source":["#@title Trình Xác Thực Chữ Ký Số\n","#1. Cài đặt các thư viện cần thiết\n","!pip install flask pyngrok cryptography\n","\n","#2. Mã nguồn ứng dụng Flask (Đã sửa lỗi)\n","import os\n","from flask import Flask, request, render_template_string, flash, redirect, url_for\n","from werkzeug.utils import secure_filename\n","from pyngrok import ngrok, conf\n","from cryptography.hazmat.primitives import hashes\n","# THAY ĐỔI 1: Thêm 'utils' vào câu lệnh import\n","from cryptography.hazmat.primitives.asymmetric import padding, utils\n","from cryptography.hazmat.primitives import serialization\n","from cryptography.exceptions import InvalidSignature\n","\n","# Cấu hình ngrok với token của bạn\n","# Thay 'YOUR_NGROK_AUTH_TOKEN' bằng token ngrok thực tế của bạn\n","NGROK_AUTH_TOKEN = \"2vQiHuSkEACuMQdfLaOTROncorU_3gmW5HFXANyHBHUfm2ufF\" #<-- THAY TOKEN CỦA BẠN VÀO ĐÂY\n","conf.get_default().auth_token = NGROK_AUTH_TOKEN\n","\n","# Tạo ứng dụng Flask\n","app = Flask(__name__)\n","app.config['UPLOAD_FOLDER'] = 'uploads'\n","app.secret_key = 'supersecretkey'\n","\n","# Tạo thư mục uploads nếu chưa có\n","if not os.path.exists('uploads'):\n","    os.makedirs('uploads')\n","\n","# Hàm băm file\n","def hash_file(filename):\n","    \"\"\"Băm nội dung của một file sử dụng thuật toán SHA-256.\"\"\"\n","    hasher = hashes.Hash(hashes.SHA256())\n","    with open(filename, 'rb') as f:\n","        while chunk := f.read(4096):\n","            hasher.update(chunk)\n","    return hasher.finalize()\n","\n","# Giao diện HTML của trang web (Không thay đổi)\n","HTML_TEMPLATE = \"\"\"\n","<!DOCTYPE html>\n","<html lang=\"vi\">\n","<head>\n","    <meta charset=\"UTF-8\">\n","    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n","    <title>Xác Thực Chữ Ký Số</title>\n","    <style>\n","        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f9; color: #333; }\n","        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n","        h1 { color: #444; text-align: center; }\n","        .form-group { margin-bottom: 15px; }\n","        label { display: block; margin-bottom: 5px; font-weight: bold; }\n","        input[type=\"file\"] { border: 1px solid #ccc; padding: 10px; width: 100%; box-sizing: border-box; border-radius: 4px; }\n","        textarea { border: 1px solid #ccc; padding: 10px; width: 100%; box-sizing: border-box; border-radius: 4px; font-family: monospace; font-size: 14px; }\n","        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }\n","        button:hover { background-color: #0056b3; }\n","        .flash { padding: 10px; margin-top: 20px; border-radius: 4px; }\n","        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }\n","        .danger { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }\n","    </style>\n","</head>\n","<body>\n","    <div class=\"container\">\n","        <h1>Trình Xác Thực Chữ Ký Số</h1>\n","        {% with messages = get_flashed_messages(with_categories=true) %}\n","            {% if messages %}\n","                {% for category, message in messages %}\n","                    <div class=\"flash {{ category }}\">{{ message }}</div>\n","                {% endfor %}\n","            {% endif %}\n","        {% endwith %}\n","        <form method=\"post\" enctype=\"multipart/form-data\" action=\"/\">\n","            <div class=\"form-group\">\n","                <label for=\"file\">1. Tải lên tệp gốc:</label>\n","                <input type=\"file\" name=\"file\" id=\"file\" required>\n","            </div>\n","            <div class=\"form-group\">\n","                <label for=\"signature\">2. Dán chữ ký số (định dạng Hex):</label>\n","                <textarea name=\"signature\" id=\"signature\" rows=\"5\" required placeholder=\"Dán chuỗi chữ ký dạng hex (ví dụ: d9a74581...)...\"></textarea>\n","            </div>\n","            <div class=\"form-group\">\n","                <label for=\"public_key\">3. Dán nội dung khóa công khai (định dạng PEM):</label>\n","                <textarea name=\"public_key\" id=\"public_key\" rows=\"8\" required placeholder=\"-----BEGIN PUBLIC KEY-----\\nMIIB...IDAQAB\\n-----END PUBLIC KEY-----\"></textarea>\n","            </div>\n","            <button type=\"submit\">Xác thực</button>\n","        </form>\n","    </div>\n","</body>\n","</html>\n","\"\"\"\n","\n","@app.route('/', methods=['GET', 'POST'])\n","def upload_and_verify():\n","    if request.method == 'POST':\n","        if 'file' not in request.files or 'signature' not in request.form or 'public_key' not in request.form:\n","            flash('Yêu cầu không hợp lệ, vui lòng thử lại!', 'danger')\n","            return redirect(request.url)\n","\n","        file = request.files['file']\n","        signature_hex = request.form['signature'].strip()\n","        public_key_pem = request.form['public_key'].strip()\n","\n","        if file.filename == '' or not signature_hex or not public_key_pem:\n","            flash('Vui lòng cung cấp đầy đủ cả 3 thông tin!', 'danger')\n","            return redirect(request.url)\n","\n","        file_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))\n","        file.save(file_path)\n","\n","        try:\n","            hashed_message = hash_file(file_path)\n","\n","            public_key_bytes = public_key_pem.encode('utf-8')\n","            public_key = serialization.load_pem_public_key(public_key_bytes)\n","\n","            signature = bytes.fromhex(signature_hex)\n","\n","            # THAY ĐỔI 2: Thêm tham số 'algorithm' vào hàm verify\n","            public_key.verify(\n","                signature,\n","                hashed_message, # Dữ liệu đã được băm\n","                padding.PSS(\n","                    mgf=padding.MGF1(hashes.SHA256()),\n","                    salt_length=padding.PSS.MAX_LENGTH\n","                ),\n","                utils.Prehashed(hashes.SHA256()) # Chỉ định thuật toán đã dùng để băm\n","            )\n","            flash('✅ Xác thực thành công! Đây là chữ ký hợp lệ.', 'success')\n","\n","        except InvalidSignature:\n","            flash('❌ Xác thực không thành công! Chữ ký không khớp với tệp.', 'danger')\n","        except (ValueError) as e:\n","            flash(f'❌ Lỗi định dạng đầu vào! Hãy chắc chắn rằng chữ ký ở dạng Hex và khóa công khai ở dạng PEM. Chi tiết: {e}', 'danger')\n","        except Exception as e:\n","            flash(f'Đã xảy ra lỗi trong quá trình xác thực: {e}', 'danger')\n","        finally:\n","            if os.path.exists(file_path):\n","                os.remove(file_path)\n","\n","        return redirect(url_for('upload_and_verify'))\n","\n","    return render_template_string(HTML_TEMPLATE)\n","\n","# Mở một tunnel HTTP trên cổng 5000\n","public_url = ngrok.connect(5000)\n","print(\" * Trang web của bạn đang chạy tại:\", public_url)\n","\n","# Chạy ứng dụng Flask\n","app.run(port=5000)"]},{"cell_type":"code","source":["!pip install flask flask-ngrok pycryptodome"],"metadata":{"colab":{"base_uri":"https://localhost:8080/"},"id":"1oygQF1pJ1ER","executionInfo":{"status":"ok","timestamp":1749700483256,"user_tz":-420,"elapsed":4520,"user":{"displayName":"tai nguyen","userId":"14115413621566996446"}},"outputId":"cba0915c-cfa0-4a2b-aa65-4435b47a9c32"},"execution_count":null,"outputs":[{"output_type":"stream","name":"stdout","text":["Requirement already satisfied: flask in /usr/local/lib/python3.11/dist-packages (3.1.1)\n","Collecting flask-ngrok\n","  Downloading flask_ngrok-0.0.25-py3-none-any.whl.metadata (1.8 kB)\n","Requirement already satisfied: pycryptodome in /usr/local/lib/python3.11/dist-packages (3.23.0)\n","Requirement already satisfied: blinker>=1.9.0 in /usr/local/lib/python3.11/dist-packages (from flask) (1.9.0)\n","Requirement already satisfied: click>=8.1.3 in /usr/local/lib/python3.11/dist-packages (from flask) (8.2.1)\n","Requirement already satisfied: itsdangerous>=2.2.0 in /usr/local/lib/python3.11/dist-packages (from flask) (2.2.0)\n","Requirement already satisfied: jinja2>=3.1.2 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.6)\n","Requirement already satisfied: markupsafe>=2.1.1 in /usr/local/lib/python3.11/dist-packages (from flask) (3.0.2)\n","Requirement already satisfied: werkzeug>=3.1.0 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.3)\n","Requirement already satisfied: requests in /usr/local/lib/python3.11/dist-packages (from flask-ngrok) (2.32.3)\n","Requirement already satisfied: charset-normalizer<4,>=2 in /usr/local/lib/python3.11/dist-packages (from requests->flask-ngrok) (3.4.2)\n","Requirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.11/dist-packages (from requests->flask-ngrok) (3.10)\n","Requirement already satisfied: urllib3<3,>=1.21.1 in /usr/local/lib/python3.11/dist-packages (from requests->flask-ngrok) (2.4.0)\n","Requirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.11/dist-packages (from requests->flask-ngrok) (2025.4.26)\n","Downloading flask_ngrok-0.0.25-py3-none-any.whl (3.1 kB)\n","Installing collected packages: flask-ngrok\n","Successfully installed flask-ngrok-0.0.25\n"]}]},{"cell_type":"code","source":["!pip install flask flask-socketio pyngrok pycryptodome"],"metadata":{"colab":{"base_uri":"https://localhost:8080/"},"id":"gOTz4hKhE2UR","executionInfo":{"status":"ok","timestamp":1749697163390,"user_tz":-420,"elapsed":14438,"user":{"displayName":"tai nguyen","userId":"14115413621566996446"}},"outputId":"a5ca0900-23e1-4e1e-867e-99e06d53df96"},"execution_count":null,"outputs":[{"output_type":"stream","name":"stdout","text":["Requirement already satisfied: flask in /usr/local/lib/python3.11/dist-packages (3.1.1)\n","Collecting flask-socketio\n","  Downloading Flask_SocketIO-5.5.1-py3-none-any.whl.metadata (2.6 kB)\n","Collecting pyngrok\n","  Downloading pyngrok-7.2.11-py3-none-any.whl.metadata (9.4 kB)\n","Collecting pycryptodome\n","  Downloading pycryptodome-3.23.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.4 kB)\n","Requirement already satisfied: blinker>=1.9.0 in /usr/local/lib/python3.11/dist-packages (from flask) (1.9.0)\n","Requirement already satisfied: click>=8.1.3 in /usr/local/lib/python3.11/dist-packages (from flask) (8.2.1)\n","Requirement already satisfied: itsdangerous>=2.2.0 in /usr/local/lib/python3.11/dist-packages (from flask) (2.2.0)\n","Requirement already satisfied: jinja2>=3.1.2 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.6)\n","Requirement already satisfied: markupsafe>=2.1.1 in /usr/local/lib/python3.11/dist-packages (from flask) (3.0.2)\n","Requirement already satisfied: werkzeug>=3.1.0 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.3)\n","Collecting python-socketio>=5.12.0 (from flask-socketio)\n","  Downloading python_socketio-5.13.0-py3-none-any.whl.metadata (3.2 kB)\n","Requirement already satisfied: PyYAML>=5.1 in /usr/local/lib/python3.11/dist-packages (from pyngrok) (6.0.2)\n","Collecting bidict>=0.21.0 (from python-socketio>=5.12.0->flask-socketio)\n","  Downloading bidict-0.23.1-py3-none-any.whl.metadata (8.7 kB)\n","Collecting python-engineio>=4.11.0 (from python-socketio>=5.12.0->flask-socketio)\n","  Downloading python_engineio-4.12.2-py3-none-any.whl.metadata (2.2 kB)\n","Collecting simple-websocket>=0.10.0 (from python-engineio>=4.11.0->python-socketio>=5.12.0->flask-socketio)\n","  Downloading simple_websocket-1.1.0-py3-none-any.whl.metadata (1.5 kB)\n","Collecting wsproto (from simple-websocket>=0.10.0->python-engineio>=4.11.0->python-socketio>=5.12.0->flask-socketio)\n","  Downloading wsproto-1.2.0-py3-none-any.whl.metadata (5.6 kB)\n","Requirement already satisfied: h11<1,>=0.9.0 in /usr/local/lib/python3.11/dist-packages (from wsproto->simple-websocket>=0.10.0->python-engineio>=4.11.0->python-socketio>=5.12.0->flask-socketio) (0.16.0)\n","Downloading Flask_SocketIO-5.5.1-py3-none-any.whl (18 kB)\n","Downloading pyngrok-7.2.11-py3-none-any.whl (25 kB)\n","Downloading pycryptodome-3.23.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.3 MB)\n","\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m2.3/2.3 MB\u001b[0m \u001b[31m26.2 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\n","\u001b[?25hDownloading python_socketio-5.13.0-py3-none-any.whl (77 kB)\n","\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m77.8/77.8 kB\u001b[0m \u001b[31m4.2 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\n","\u001b[?25hDownloading bidict-0.23.1-py3-none-any.whl (32 kB)\n","Downloading python_engineio-4.12.2-py3-none-any.whl (59 kB)\n","\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m59.5/59.5 kB\u001b[0m \u001b[31m3.4 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\n","\u001b[?25hDownloading simple_websocket-1.1.0-py3-none-any.whl (13 kB)\n","Downloading wsproto-1.2.0-py3-none-any.whl (24 kB)\n","Installing collected packages: wsproto, pyngrok, pycryptodome, bidict, simple-websocket, python-engineio, python-socketio, flask-socketio\n","Successfully installed bidict-0.23.1 flask-socketio-5.5.1 pycryptodome-3.23.0 pyngrok-7.2.11 python-engineio-4.12.2 python-socketio-5.13.0 simple-websocket-1.1.0 wsproto-1.2.0\n"]}]}]}
+#@title Trình Xác Thực Chữ Ký Số
+#1. Cài đặt các thư viện cần thiết
+!pip install flask pyngrok cryptography
+
+#2. Mã nguồn ứng dụng Flask (Đã sửa lỗi)
+import os
+from flask import Flask, request, render_template_string, flash, redirect, url_for
+from werkzeug.utils import secure_filename
+from pyngrok import ngrok, conf
+from cryptography.hazmat.primitives import hashes
+# THAY ĐỔI 1: Thêm 'utils' vào câu lệnh import
+from cryptography.hazmat.primitives.asymmetric import padding, utils
+from cryptography.hazmat.primitives import serialization
+from cryptography.exceptions import InvalidSignature
+
+# Cấu hình ngrok với token của bạn
+# Thay 'YOUR_NGROK_AUTH_TOKEN' bằng token ngrok thực tế của bạn
+NGROK_AUTH_TOKEN = "2vQiHuSkEACuMQdfLaOTROncorU_3gmW5HFXANyHBHUfm2ufF" #<-- THAY TOKEN CỦA BẠN VÀO ĐÂY
+conf.get_default().auth_token = NGROK_AUTH_TOKEN
+
+# Tạo ứng dụng Flask
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.secret_key = 'supersecretkey'
+
+# Tạo thư mục uploads nếu chưa có
+if not os.path.exists('uploads'):
+    os.makedirs('uploads')
+
+# Hàm băm file
+def hash_file(filename):
+    """Băm nội dung của một file sử dụng thuật toán SHA-256."""
+    hasher = hashes.Hash(hashes.SHA256())
+    with open(filename, 'rb') as f:
+        while chunk := f.read(4096):
+            hasher.update(chunk)
+    return hasher.finalize()
+
+# Giao diện HTML của trang web (Không thay đổi)
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xác Thực Chữ Ký Số</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #444; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="file"] { border: 1px solid #ccc; padding: 10px; width: 100%; box-sizing: border-box; border-radius: 4px; }
+        textarea { border: 1px solid #ccc; padding: 10px; width: 100%; box-sizing: border-box; border-radius: 4px; font-family: monospace; font-size: 14px; }
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
+        button:hover { background-color: #0056b3; }
+        .flash { padding: 10px; margin-top: 20px; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .danger { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Trình Xác Thực Chữ Ký Số</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <form method="post" enctype="multipart/form-data" action="/">
+            <div class="form-group">
+                <label for="file">1. Tải lên tệp gốc:</label>
+                <input type="file" name="file" id="file" required>
+            </div>
+            <div class="form-group">
+                <label for="signature">2. Dán chữ ký số (định dạng Hex):</label>
+                <textarea name="signature" id="signature" rows="5" required placeholder="Dán chuỗi chữ ký dạng hex (ví dụ: d9a74581...)..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="public_key">3. Dán nội dung khóa công khai (định dạng PEM):</label>
+                <textarea name="public_key" id="public_key" rows="8" required placeholder="-----BEGIN PUBLIC KEY-----\nMIIB...IDAQAB\n-----END PUBLIC KEY-----"></textarea>
+            </div>
+            <button type="submit">Xác thực</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+@app.route('/', methods=['GET', 'POST'])
+def upload_and_verify():
+    if request.method == 'POST':
+        if 'file' not in request.files or 'signature' not in request.form or 'public_key' not in request.form:
+            flash('Yêu cầu không hợp lệ, vui lòng thử lại!', 'danger')
+            return redirect(request.url)
+
+        file = request.files['file']
+        signature_hex = request.form['signature'].strip()
+        public_key_pem = request.form['public_key'].strip()
+
+        if file.filename == '' or not signature_hex or not public_key_pem:
+            flash('Vui lòng cung cấp đầy đủ cả 3 thông tin!', 'danger')
+            return redirect(request.url)
+
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+        file.save(file_path)
+
+        try:
+            hashed_message = hash_file(file_path)
+
+            public_key_bytes = public_key_pem.encode('utf-8')
+            public_key = serialization.load_pem_public_key(public_key_bytes)
+
+            signature = bytes.fromhex(signature_hex)
+
+            # THAY ĐỔI 2: Thêm tham số 'algorithm' vào hàm verify
+            public_key.verify(
+                signature,
+                hashed_message, # Dữ liệu đã được băm
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                utils.Prehashed(hashes.SHA256()) # Chỉ định thuật toán đã dùng để băm
+            )
+            flash('✅ Xác thực thành công! Đây là chữ ký hợp lệ.', 'success')
+
+        except InvalidSignature:
+            flash('❌ Xác thực không thành công! Chữ ký không khớp với tệp.', 'danger')
+        except (ValueError) as e:
+            flash(f'❌ Lỗi định dạng đầu vào! Hãy chắc chắn rằng chữ ký ở dạng Hex và khóa công khai ở dạng PEM. Chi tiết: {e}', 'danger')
+        except Exception as e:
+            flash(f'Đã xảy ra lỗi trong quá trình xác thực: {e}', 'danger')
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+        return redirect(url_for('upload_and_verify'))
+
+    return render_template_string(HTML_TEMPLATE)
+
+# Mở một tunnel HTTP trên cổng 5000
+public_url = ngrok.connect(5000)
+print(" * Trang web của bạn đang chạy tại:", public_url)
+
+# Chạy ứng dụng Flask
+app.run(port=5000)
