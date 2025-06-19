@@ -1,1 +1,233 @@
-{"nbformat":4,"nbformat_minor":0,"metadata":{"colab":{"provenance":[],"authorship_tag":"ABX9TyMJlTN+3p4QF5Ub+a7hKxsj"},"kernelspec":{"name":"python3","display_name":"Python 3"},"language_info":{"name":"python"}},"cells":[{"cell_type":"code","execution_count":3,"metadata":{"colab":{"base_uri":"https://localhost:8080/"},"id":"CFSgCRg6xF3_","outputId":"69f7ce06-3c9c-4a5d-8a8b-42190230e799","executionInfo":{"status":"ok","timestamp":1750293796181,"user_tz":-420,"elapsed":327216,"user":{"displayName":"tai nguyen","userId":"14115413621566996446"}}},"outputs":[{"output_type":"stream","name":"stdout","text":[]},{"output_type":"stream","name":"stderr","text":["WARNING:werkzeug:Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.\n"]},{"output_type":"stream","name":"stdout","text":["Trang web đang chạy tại: NgrokTunnel: \"https://79ed-34-86-162-236.ngrok-free.app\" -> \"http://localhost:5000\"\n"," * Serving Flask app '__main__'\n"," * Debug mode: off\n"]},{"output_type":"stream","name":"stderr","text":["INFO:werkzeug:\u001b[31m\u001b[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.\u001b[0m\n"," * Running on http://127.0.0.1:5000\n","INFO:werkzeug:\u001b[33mPress CTRL+C to quit\u001b[0m\n","INFO:werkzeug:127.0.0.1 - - [19/Jun/2025 00:37:59] \"GET / HTTP/1.1\" 200 -\n","INFO:werkzeug:127.0.0.1 - - [19/Jun/2025 00:37:59] \"\u001b[33mGET /favicon.ico HTTP/1.1\u001b[0m\" 404 -\n","INFO:werkzeug:127.0.0.1 - - [19/Jun/2025 00:42:49] \"GET / HTTP/1.1\" 200 -\n","WARNING:pyngrok.process.ngrok:t=2025-06-19T00:43:15+0000 lvl=warn msg=\"Stopping forwarder\" name=http-5000-f1ac82aa-b0a0-41c0-a86e-5fe5225cc018 acceptErr=\"failed to accept connection: Listener closed\"\n"]}],"source":["import os\n","import hashlib\n","from flask import Flask, render_template_string, request\n","from flask_socketio import SocketIO\n","from pyngrok import ngrok\n","from Crypto.PublicKey import RSA\n","from Crypto.Signature import pkcs1_15\n","from Crypto.Hash import SHA256\n","\n","# Cấu hình Flask\n","app = Flask(__name__)\n","app.config['SECRET_KEY'] = 'secret!'\n","socketio = SocketIO(app)\n","\n","# Tạo khóa RSA\n","key = RSA.generate(2048)\n","private_key = key.export_key().decode()\n","public_key = key.publickey().export_key().decode()\n","\n","# HTML giao diện người dùng\n","HTML_TEMPLATE = '''\n","<!DOCTYPE html>\n","<html lang=\"en\">\n","<head>\n","    <meta charset=\"UTF-8\">\n","    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n","    <title>Ký Số Tài Liệu An Toàn</title>\n","    <style>\n","        /* General Body Styling */\n","        body {\n","            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\n","            background-color: #f0f2f5; /* Light gray background */\n","            margin: 0;\n","            padding: 20px;\n","            display: flex;\n","            justify-content: center;\n","            align-items: flex-start; /* Align to the top */\n","            min-height: 100vh;\n","            color: #333;\n","        }\n","\n","        /* Container for the main content */\n","        .container {\n","            background-color: #ffffff;\n","            padding: 30px;\n","            border-radius: 12px;\n","            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);\n","            width: 100%;\n","            max-width: 900px; /* Wider container */\n","            box-sizing: border-box;\n","        }\n","\n","        /* Headings */\n","        h1, h2, h3 {\n","            color: #2c3e50; /* Darker blue-gray */\n","            text-align: center;\n","            margin-bottom: 25px;\n","        }\n","        h2 {\n","            font-size: 2em;\n","            border-bottom: 2px solid #e0e0e0;\n","            padding-bottom: 15px;\n","        }\n","        h3 {\n","            font-size: 1.3em;\n","            margin-top: 30px;\n","            margin-bottom: 10px;\n","            color: #34495e;\n","        }\n","\n","        /* Form Styling */\n","        form {\n","            display: flex;\n","            flex-direction: column;\n","            align-items: center;\n","            padding: 20px 0;\n","            border-bottom: 1px solid #e0e0e0;\n","            margin-bottom: 20px;\n","        }\n","\n","        label {\n","            font-size: 1.1em;\n","            margin-bottom: 10px;\n","            font-weight: 600;\n","        }\n","\n","        input[type=\"file\"] {\n","            border: 1px solid #ced4da;\n","            padding: 10px;\n","            border-radius: 8px;\n","            background-color: #f8f9fa;\n","            cursor: pointer;\n","            width: calc(100% - 22px); /* Adjust for padding and border */\n","            max-width: 400px;\n","            margin-bottom: 15px;\n","        }\n","\n","        button {\n","            background-color: #007bff; /* Primary blue */\n","            color: white;\n","            padding: 12px 25px;\n","            border: none;\n","            border-radius: 8px;\n","            font-size: 1.1em;\n","            cursor: pointer;\n","            transition: background-color 0.3s ease, transform 0.2s ease;\n","            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.2);\n","        }\n","\n","        button:hover {\n","            background-color: #0056b3; /* Darker blue on hover */\n","            transform: translateY(-2px); /* Slight lift effect */\n","        }\n","\n","        button:active {\n","            transform: translateY(0); /* Press down effect */\n","        }\n","\n","        /* Textarea Styling for Outputs */\n","        textarea {\n","            width: calc(100% - 24px); /* Adjust for padding and border */\n","            padding: 12px;\n","            margin-bottom: 20px;\n","            border: 1px solid #ced4da;\n","            border-radius: 8px;\n","            font-family: 'Consolas', 'Monaco', monospace; /* Monospaced font for code/hash */\n","            font-size: 0.95em;\n","            background-color: #f8f9fa; /* Light background for textareas */\n","            color: #495057;\n","            resize: vertical; /* Allow vertical resizing */\n","            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);\n","        }\n","\n","        /* Responsive adjustments */\n","        @media (max-width: 768px) {\n","            .container {\n","                margin: 15px;\n","                padding: 20px;\n","            }\n","            h2 {\n","                font-size: 1.8em;\n","            }\n","            h3 {\n","                font-size: 1.2em;\n","            }\n","            button {\n","                padding: 10px 20px;\n","                font-size: 1em;\n","            }\n","        }\n","\n","        @media (max-width: 480px) {\n","            body {\n","                padding: 10px;\n","            }\n","            .container {\n","                padding: 15px;\n","            }\n","            input[type=\"file\"] {\n","                width: 100%;\n","            }\n","            textarea {\n","                width: 100%;\n","            }\n","        }\n","    </style>\n","</head>\n","<body>\n","    <div class=\"container\">\n","        <h1>🔐 Ký Số Tài Liệu An Toàn</h1>\n","        <h2>Tải lên & Ký số file tài liệu</h2>\n","\n","        <form action=\"/upload\" method=\"post\" enctype=\"multipart/form-data\">\n","            <label for=\"documentFile\">Chọn file tài liệu của bạn:</label>\n","            <input type=\"file\" name=\"file\" id=\"documentFile\" accept=\".txt,.pdf,.docx,.doc\"> <button type=\"submit\">Tải lên & Ký số</button>\n","        </form>\n","\n","        {% if private_key %}\n","            <hr style=\"border: 0; height: 1px; background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0)); margin: 30px 0;\">\n","\n","            <h3>🔑 Khóa riêng (Private Key):</h3>\n","            <textarea rows=\"12\" cols=\"80\" readonly>{{ private_key }}</textarea>\n","\n","            <h3>🌿 Khóa công khai (Public Key):</h3>\n","            <textarea rows=\"12\" cols=\"80\" readonly>{{ public_key }}</textarea>\n","\n","            <h3>#️⃣ Mã băm (Hash SHA-256):</h3>\n","            <textarea rows=\"3\" cols=\"80\" readonly>{{ file_hash }}</textarea>\n","\n","            <h3>✍️ Chữ ký số:</h3>\n","            <textarea rows=\"6\" cols=\"80\" readonly>{{ signature }}</textarea>\n","        {% endif %}\n","    </div>\n","</body>\n","</html>\n","'''\n","\n","@app.route('/', methods=['GET'])\n","def index():\n","    return render_template_string(HTML_TEMPLATE)\n","\n","@app.route('/upload', methods=['POST'])\n","def upload():\n","    uploaded_file = request.files['file']\n","    if uploaded_file.filename == '':\n","        return \"Không có file nào được chọn.\"\n","\n","    file_data = uploaded_file.read()\n","\n","    # Tính hash SHA-256\n","    hash_obj = SHA256.new(file_data)\n","    file_hash = hash_obj.hexdigest()\n","\n","    # Ký số: Mã hóa hash bằng khóa riêng\n","    signature = pkcs1_15.new(key).sign(hash_obj)\n","\n","    return render_template_string(\n","        HTML_TEMPLATE,\n","        private_key=private_key,\n","        public_key=public_key,\n","        file_hash=file_hash,\n","        signature=signature.hex()\n","    )\n","\n","# Ngrok token (thay YOUR_NGROK_TOKEN bằng token thật của bạn)\n","NGROK_AUTH_TOKEN = \"2x78kyYgoItDVATusfDXfO8EB92_7BsHuMDhvAYST2gRrDws2\"\n","ngrok.set_auth_token(NGROK_AUTH_TOKEN)\n","public_url = ngrok.connect(5000)\n","print(f\"Trang web đang chạy tại: {public_url}\")\n","\n","# Chạy Flask server\n","socketio.run(app, port=5000, allow_unsafe_werkzeug=True)\n","\n"]},{"cell_type":"code","source":["!pip install flask flask-socketio pyngrok pycryptodome"],"metadata":{"colab":{"base_uri":"https://localhost:8080/"},"id":"M4Q6rspMB6dT","executionInfo":{"status":"ok","timestamp":1750293468930,"user_tz":-420,"elapsed":11165,"user":{"displayName":"tai nguyen","userId":"14115413621566996446"}},"outputId":"8bd8ea89-598a-4bcb-ad44-171490e6e5a7"},"execution_count":2,"outputs":[{"output_type":"stream","name":"stdout","text":["Requirement already satisfied: flask in /usr/local/lib/python3.11/dist-packages (3.1.1)\n","Collecting flask-socketio\n","  Downloading Flask_SocketIO-5.5.1-py3-none-any.whl.metadata (2.6 kB)\n","Collecting pyngrok\n","  Downloading pyngrok-7.2.11-py3-none-any.whl.metadata (9.4 kB)\n","Collecting pycryptodome\n","  Downloading pycryptodome-3.23.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.4 kB)\n","Requirement already satisfied: blinker>=1.9.0 in /usr/local/lib/python3.11/dist-packages (from flask) (1.9.0)\n","Requirement already satisfied: click>=8.1.3 in /usr/local/lib/python3.11/dist-packages (from flask) (8.2.1)\n","Requirement already satisfied: itsdangerous>=2.2.0 in /usr/local/lib/python3.11/dist-packages (from flask) (2.2.0)\n","Requirement already satisfied: jinja2>=3.1.2 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.6)\n","Requirement already satisfied: markupsafe>=2.1.1 in /usr/local/lib/python3.11/dist-packages (from flask) (3.0.2)\n","Requirement already satisfied: werkzeug>=3.1.0 in /usr/local/lib/python3.11/dist-packages (from flask) (3.1.3)\n","Collecting python-socketio>=5.12.0 (from flask-socketio)\n","  Downloading python_socketio-5.13.0-py3-none-any.whl.metadata (3.2 kB)\n","Requirement already satisfied: PyYAML>=5.1 in /usr/local/lib/python3.11/dist-packages (from pyngrok) (6.0.2)\n","Collecting bidict>=0.21.0 (from python-socketio>=5.12.0->flask-socketio)\n","  Downloading bidict-0.23.1-py3-none-any.whl.metadata (8.7 kB)\n","Collecting python-engineio>=4.11.0 (from python-socketio>=5.12.0->flask-socketio)\n","  Downloading python_engineio-4.12.2-py3-none-any.whl.metadata (2.2 kB)\n","Collecting simple-websocket>=0.10.0 (from python-engineio>=4.11.0->python-socketio>=5.12.0->flask-socketio)\n","  Downloading simple_websocket-1.1.0-py3-none-any.whl.metadata (1.5 kB)\n","Collecting wsproto (from simple-websocket>=0.10.0->python-engineio>=4.11.0->python-socketio>=5.12.0->flask-socketio)\n","  Downloading wsproto-1.2.0-py3-none-any.whl.metadata (5.6 kB)\n","Requirement already satisfied: h11<1,>=0.9.0 in /usr/local/lib/python3.11/dist-packages (from wsproto->simple-websocket>=0.10.0->python-engineio>=4.11.0->python-socketio>=5.12.0->flask-socketio) (0.16.0)\n","Downloading Flask_SocketIO-5.5.1-py3-none-any.whl (18 kB)\n","Downloading pyngrok-7.2.11-py3-none-any.whl (25 kB)\n","Downloading pycryptodome-3.23.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.3 MB)\n","\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m2.3/2.3 MB\u001b[0m \u001b[31m60.7 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\n","\u001b[?25hDownloading python_socketio-5.13.0-py3-none-any.whl (77 kB)\n","\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m77.8/77.8 kB\u001b[0m \u001b[31m5.7 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\n","\u001b[?25hDownloading bidict-0.23.1-py3-none-any.whl (32 kB)\n","Downloading python_engineio-4.12.2-py3-none-any.whl (59 kB)\n","\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m59.5/59.5 kB\u001b[0m \u001b[31m3.9 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\n","\u001b[?25hDownloading simple_websocket-1.1.0-py3-none-any.whl (13 kB)\n","Downloading wsproto-1.2.0-py3-none-any.whl (24 kB)\n","Installing collected packages: wsproto, pyngrok, pycryptodome, bidict, simple-websocket, python-engineio, python-socketio, flask-socketio\n","Successfully installed bidict-0.23.1 flask-socketio-5.5.1 pycryptodome-3.23.0 pyngrok-7.2.11 python-engineio-4.12.2 python-socketio-5.13.0 simple-websocket-1.1.0 wsproto-1.2.0\n"]}]}]}
+import os
+import hashlib
+from flask import Flask, render_template_string, request
+from flask_socketio import SocketIO
+from pyngrok import ngrok
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+
+# Cấu hình Flask
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'secret!'
+socketio = SocketIO(app)
+
+# Tạo khóa RSA
+key = RSA.generate(2048)
+private_key = key.export_key().decode()
+public_key = key.publickey().export_key().decode()
+
+# HTML giao diện người dùng
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ký Số Tài Liệu An Toàn</title>
+    <style>
+        /* General Body Styling */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5; /* Light gray background */
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to the top */
+            min-height: 100vh;
+            color: #333;
+        }
+
+        /* Container for the main content */
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 900px; /* Wider container */
+            box-sizing: border-box;
+        }
+
+        /* Headings */
+        h1, h2, h3 {
+            color: #2c3e50; /* Darker blue-gray */
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        h2 {
+            font-size: 2em;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 15px;
+        }
+        h3 {
+            font-size: 1.3em;
+            margin-top: 30px;
+            margin-bottom: 10px;
+            color: #34495e;
+        }
+
+        /* Form Styling */
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        label {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        input[type="file"] {
+            border: 1px solid #ced4da;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            cursor: pointer;
+            width: calc(100% - 22px); /* Adjust for padding and border */
+            max-width: 400px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background-color: #007bff; /* Primary blue */
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.2);
+        }
+
+        button:hover {
+            background-color: #0056b3; /* Darker blue on hover */
+            transform: translateY(-2px); /* Slight lift effect */
+        }
+
+        button:active {
+            transform: translateY(0); /* Press down effect */
+        }
+
+        /* Textarea Styling for Outputs */
+        textarea {
+            width: calc(100% - 24px); /* Adjust for padding and border */
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace; /* Monospaced font for code/hash */
+            font-size: 0.95em;
+            background-color: #f8f9fa; /* Light background for textareas */
+            color: #495057;
+            resize: vertical; /* Allow vertical resizing */
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                margin: 15px;
+                padding: 20px;
+            }
+            h2 {
+                font-size: 1.8em;
+            }
+            h3 {
+                font-size: 1.2em;
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 1em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                padding: 15px;
+            }
+            input[type="file"] {
+                width: 100%;
+            }
+            textarea {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Ký Số Tài Liệu An Toàn</h1>
+        <h2>Tải lên & Ký số file tài liệu</h2>
+
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <label for="documentFile">Chọn file tài liệu của bạn:</label>
+            <input type="file" name="file" id="documentFile" accept=".txt,.pdf,.docx,.doc"> <button type="submit">Tải lên & Ký số</button>
+        </form>
+
+        {% if private_key %}
+            <hr style="border: 0; height: 1px; background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0)); margin: 30px 0;">
+
+            <h3>🔑 Khóa riêng (Private Key):</h3>
+            <textarea rows="12" cols="80" readonly>{{ private_key }}</textarea>
+
+            <h3>🌿 Khóa công khai (Public Key):</h3>
+            <textarea rows="12" cols="80" readonly>{{ public_key }}</textarea>
+
+            <h3>#️⃣ Mã băm (Hash SHA-256):</h3>
+            <textarea rows="3" cols="80" readonly>{{ file_hash }}</textarea>
+
+            <h3>✍️ Chữ ký số:</h3>
+            <textarea rows="6" cols="80" readonly>{{ signature }}</textarea>
+        {% endif %}
+    </div>
+</body>
+</html>
+'''
+
+@app.route('/', methods=['GET'])
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    uploaded_file = request.files['file']
+    if uploaded_file.filename == '':
+        return "Không có file nào được chọn."
+
+    file_data = uploaded_file.read()
+
+    # Tính hash SHA-256
+    hash_obj = SHA256.new(file_data)
+    file_hash = hash_obj.hexdigest()
+
+    # Ký số: Mã hóa hash bằng khóa riêng
+    signature = pkcs1_15.new(key).sign(hash_obj)
+
+    return render_template_string(
+        HTML_TEMPLATE,
+        private_key=private_key,
+        public_key=public_key,
+        file_hash=file_hash,
+        signature=signature.hex()
+    )
+
+# Ngrok token (thay YOUR_NGROK_TOKEN bằng token thật của bạn)
+NGROK_AUTH_TOKEN = "2x78kyYgoItDVATusfDXfO8EB92_7BsHuMDhvAYST2gRrDws2"
+ngrok.set_auth_token(NGROK_AUTH_TOKEN)
+public_url = ngrok.connect(5000)
+print(f"Trang web đang chạy tại: {public_url}")
+
+# Chạy Flask server
+socketio.run(app, port=5000, allow_unsafe_werkzeug=True)
+
